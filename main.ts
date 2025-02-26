@@ -1,4 +1,4 @@
-import { App, DropdownComponent, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, DropdownComponent, Notice, Plugin, PluginSettingTab, Setting, ButtonComponent } from 'obsidian';
 import OpenAI from 'openai';
 
 
@@ -12,8 +12,8 @@ interface MyPluginSettings {
 const DEFAULT_SETTINGS: MyPluginSettings = {
 	api_key: 'API KEY',
 	base_url: 'https://api.openai.com/v1/',
-	model: 'default',
-	models: {"option-1": "gpt-4o-mini"}
+	model: '',
+	models: {}
 }
 
 export class OpenAIClient {
@@ -91,31 +91,36 @@ export class MyPluginSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
-		new Setting(containerEl)
-			.setName('Model')
-			.setDesc('The model to use for the OpenAI API')
-			.addText(text => text
-				.setPlaceholder('Model')
-				.setValue(this.plugin.settings.model)
-				.onChange(async (value) => {
-					this.plugin.settings.model = value;
-					await this.plugin.saveSettings();
-				}));
-
 		// Create a container for the dropdown
-        const dropdownContainer = new Setting(containerEl)
+        const modelContainer = new Setting(containerEl)
 			.setName("Example Setting")
 			.setDesc("Choose an option from the dropdown.")
 			.controlEl.createDiv();
 
+		// 创建一个容器来容纳下拉栏和按钮，并应用Flexbox布局
+        const controlContainer = modelContainer.createDiv({
+            cls: "my-setting-container", // 自定义类名，用于应用CSS样式
+        });
+
         // Instantiate the DropdownComponent
-        const dropdown = new DropdownComponent(dropdownContainer);
+        const dropdown = new DropdownComponent(controlContainer);
 
         // Add options to the dropdown
         dropdown.addOptions(this.plugin.settings.models);
 
         // Set the initial value
         dropdown.setValue("option2");
+
+		// 在下拉栏右侧添加一个按钮
+        const button = new ButtonComponent(controlContainer)
+            .setButtonText("Refresh")
+            .setCta()
+            .onClick(() => {
+                this.plugin.reloadModels(); // 触发 reload 函数
+            });
+
+        // 设置按钮的图标（刷新图标）
+        button.setIcon("refresh-cw");
 
         // Handle value changes
         dropdown.onChange(async (value) => {
@@ -124,6 +129,7 @@ export class MyPluginSettingTab extends PluginSettingTab {
             this.plugin.settings.model = value;
             await this.plugin.saveSettings();
         });
+
 	}
 }
 
@@ -161,8 +167,17 @@ export default class MyPlugin extends Plugin {
 
 	}
 
+	async reloadModels() {
+		this.settings.models = await this.client.listModels();
+		await this.saveSettings();
+		new Notice("模型列表已刷新！");
+	}
+
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		if (this.settings.model == '') {
+			new Notice('Please set a model in the settings.');
+		}
 	}
 
 	async saveSettings() {

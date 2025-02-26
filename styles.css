@@ -6,3 +6,21 @@ available in the app when your plugin is enabled.
 If your plugin does not need CSS, delete this file.
 
 */
+
+/* 自定义样式 */
+.my-setting-container {
+    display: flex; /* 使用Flexbox布局 */
+    align-items: center; /* 垂直居中对齐 */
+    gap: 10px; /* 设置下拉栏和按钮之间的间距 */
+}
+
+/* 统一下拉栏和按钮的高度 */
+.my-setting-container .cmn-dropdown {
+    height: 32px; /* 设置下拉栏的高度 */
+    line-height: 32px; /* 调整文字的垂直对齐 */
+}
+
+.my-setting-container button {
+    height: 32px; /* 设置按钮的高度 */
+    line-height: 32px; /* 调整文字的垂直对齐 */
+}
