@@ -1,4 +1,5 @@
-import { App, DropdownComponent, Notice, Plugin, PluginSettingTab, Setting, ButtonComponent } from 'obsidian';
+import { get } from 'http';
+import { App, DropdownComponent, Notice, Plugin, PluginSettingTab, Setting, ButtonComponent, Editor, MarkdownView, TFile } from 'obsidian';
 import OpenAI from 'openai';
 
 
@@ -35,6 +36,7 @@ export class OpenAIClient {
 			models.data.forEach((model, index) => {
 				res[`option-${index}`] = model.id;
 			  });
+			  console.log("List Models:", res);
 		} catch (error) {
 		  	console.error('Error:', error);
 		}
@@ -42,15 +44,79 @@ export class OpenAIClient {
 	}
 
 	async createCompletion(model: string, prompt: string) {
-		try {
-			const completion = await this.client.completions.create({
-				model: model,
-				prompt: prompt,
-			});
-			console.log('Completion:', completion);
-		} catch (error) {
-			console.error('Error:', error);
-		}
+		const completion = await this.client.chat.completions.create({
+			model: model,
+			messages: [
+				{
+					role: 'user',
+					content: prompt,
+				}
+			],
+		});
+		console.log('Completion:', completion);
+		return completion.choices[0].message.content;
+	}
+
+	getPrompt(content:string) {
+		return `
+你现在的任务是根据提供的Obsidian笔记内容生成简洁有效的标题备选方案。以下是具体操作要求：
+
+<任务要求>
+
+1. 仔细阅读以下Markdown格式的笔记内容：
+
+<text>
+
+${content}
+
+</text>
+
+
+2. 分析文本核心内容，识别以下要素：
+
+   - 主要论述对象或主题
+   - 关键概念/专业术语
+   - 文本结构特征（如列表、引文、代码块等）
+   - 作者的核心观点或结论
+
+
+3. 生成标题时必须遵守：
+
+   - 每个标题不超过20个token（单词/字词单位）
+   - 准确概括文本的核心信息
+   - 优先使用文本中出现的关键词
+   - 避免主观解释或补充信息
+   - 允许创造性重组核心要素
+
+
+4. 输出要求：
+
+   - 生成3-5个候选标题
+   - 每个标题单独成行
+   - 不使用编号或项目符号
+   - 完全排除Markdown格式
+   - 禁止添加说明性文字
+
+</任务要求>
+
+
+
+请直接输出候选标题，格式示例如下：
+
+[候选标题1]
+[候选标题2]
+[候选标题3]
+
+
+例如给定关于机器学习模型的笔记，可能输出：
+
+Machine Learning Model Evaluation Methods
+Key Metrics for Model Performance
+Cross-Validation Techniques Comparison
+Ensemble Model Optimization Strategies
+
+现在开始处理文本内容，生成标题备选方案。
+		`
 	}
 }
 
@@ -108,9 +174,6 @@ export class MyPluginSettingTab extends PluginSettingTab {
         // Add options to the dropdown
         dropdown.addOptions(this.plugin.settings.models);
 
-        // Set the initial value
-        dropdown.setValue("option2");
-
 		// 在下拉栏右侧添加一个按钮
         const button = new ButtonComponent(controlContainer)
             .setButtonText("Refresh")
@@ -123,10 +186,12 @@ export class MyPluginSettingTab extends PluginSettingTab {
         button.setIcon("refresh-cw");
 
         // Handle value changes
-        dropdown.onChange(async (value) => {
-            console.log("Selected value:", value);
+        dropdown.onChange(async (key) => {
+			console.log("Selected key:", key);
+			const model = this.plugin.settings.models[key];
+			console.log("Corresponding value:", model);
             // You can also update your plugin's settings here
-            this.plugin.settings.model = value;
+            this.plugin.settings.model = model;
             await this.plugin.saveSettings();
         });
 
@@ -147,23 +212,47 @@ export default class MyPlugin extends Plugin {
 		this.addCommand({
 			id: 'add_alias_here',
 			name: 'Add a alias here',
-			callback: () => {
+			editorCallback: (editor: Editor, view: MarkdownView) => {
+				this.getTitles(view);
 				
-
 			}
 		});
 
 		this.addCommand({
 			id: 'change_name_here',
 			name: 'Change note name here',
-			callback: () => {
-				
-
+			editorCallback: (editor: Editor, view: MarkdownView) => {
+				console.log(editor.getDoc())
 			}
 		})
 	}
 
 	onunload() {
+
+	}
+
+	async getTitles(view: MarkdownView) {
+		// 获取当前文件的全文（Markdown内容）
+		const fileContent = view.getViewData();
+		console.log("File content:", fileContent);
+
+		const p = this.client.getPrompt(fileContent);
+		console.log("Prompt:", p);
+
+		// 使用 OpenAI API 生成标题
+		await this.client.createCompletion(this.settings.model, p)
+		.then((response) => {
+			if (response == null) {
+				console.error("Response is undefined.");
+			} else {
+				console.log("Response:", response);
+				const titles = response.split('\n');
+				console.log("Titles:", titles);
+			}
+		})
+		.catch((error) => {
+			console.error("Error:", error);
+		});
 
 	}
 
@@ -181,8 +270,8 @@ export default class MyPlugin extends Plugin {
 	}
 
 	async saveSettings() {
-		await this.saveData(this.settings);
 		this.client = new OpenAIClient(this.settings.api_key, this.settings.base_url);
 		this.settings.models = await this.client.listModels();
+		await this.saveData(this.settings);
 	}
 }
