@@ -37,7 +37,6 @@ export class OpenAIClient {
 			models.data.forEach((model) => {
 				res[`${model.id}`] = model.id;
 			  });
-			  console.log("List Models:", res);
 		} catch (error) {
 		  	console.error('Error:', error);
 		}
@@ -54,7 +53,6 @@ export class OpenAIClient {
 				}
 			],
 		});
-		console.log('Completion:', completion);
 		return completion.choices[0].message.content;
 	}
 
@@ -193,7 +191,6 @@ export class MyPluginSettingTab extends PluginSettingTab {
         // Handle value changes
         dropdown.onChange(async (key) => {
 			const model = key;
-			console.log("Corresponding value:", model);
             // You can also update your plugin's settings here
             this.plugin.settings.model = model;
             await this.plugin.saveSettings();
@@ -205,7 +202,6 @@ export class MyPluginSettingTab extends PluginSettingTab {
             .addToggle(toggle => toggle // 使用 addToggle() 方法添加一个开关
                 .setValue(this.plugin.settings.autoFirst) // 设置开关的初始值，从插件设置中读取
                 .onChange(async (value) => { // 注册开关状态改变时的回调函数
-                    console.log('Feature X Toggle: ' + value); // 在控制台输出开关状态 (调试用)
                     this.plugin.settings.autoFirst = value; // 更新插件设置对象中的开关状态
                     await this.plugin.saveSettings(); // 保存更新后的插件设置到磁盘
                 })
@@ -373,7 +369,6 @@ export default class MyPlugin extends Plugin {
 		}
 	
 		const file = markdownView.file;
-		console.log(file);
 		const basePath = file.parent ? file.parent.path + "/" : ""; // 获取父文件夹路径，根目录则为空
 		const newFilePath = basePath + newTitle + ".md"; // 构建新的文件路径
 	
@@ -400,7 +395,6 @@ export default class MyPlugin extends Plugin {
 			return [];
 		} else {
 			const titles = response.split('\n');
-			console.log("Titles:", titles);
 			return titles;
 		}
 	}
