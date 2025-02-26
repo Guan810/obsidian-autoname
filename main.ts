@@ -7,13 +7,15 @@ interface MyPluginSettings {
 	base_url: string;
 	model: string;
 	models: Record<string, string>;
+	autoFirst: boolean;
 }
 
 const DEFAULT_SETTINGS: MyPluginSettings = {
 	api_key: 'API KEY',
 	base_url: 'https://api.openai.com/v1/',
 	model: '',
-	models: {}
+	models: {},
+	autoFirst: false,
 }
 
 export class OpenAIClient {
@@ -32,8 +34,8 @@ export class OpenAIClient {
 		const res: Record<string, string> = {}
 		try {
 			const models = await this.client.models.list();
-			models.data.forEach((model, index) => {
-				res[`option-${index}`] = model.id;
+			models.data.forEach((model) => {
+				res[`${model.id}`] = model.id;
 			  });
 			  console.log("List Models:", res);
 		} catch (error) {
@@ -77,6 +79,7 @@ ${content}
    - 关键概念/专业术语
    - 文本结构特征（如列表、引文、代码块等）
    - 作者的核心观点或结论
+   - 当前文本的标题与别名（如果有）
 
 
 3. 生成标题时必须遵守：
@@ -86,6 +89,7 @@ ${content}
    - 优先使用文本中出现的关键词
    - 避免主观解释或补充信息
    - 允许创造性重组核心要素
+   - 不允许与现有标题与别名重复
 
 
 4. 输出要求：
@@ -158,8 +162,8 @@ export class MyPluginSettingTab extends PluginSettingTab {
 
 		// Create a container for the dropdown
         const modelContainer = new Setting(containerEl)
-			.setName("Example Setting")
-			.setDesc("Choose an option from the dropdown.")
+			.setName("Model using to generate titles")
+			.setDesc("Choose a model from the dropdown.")
 			.controlEl.createDiv();
 
 		// 创建一个容器来容纳下拉栏和按钮，并应用Flexbox布局
@@ -188,12 +192,24 @@ export class MyPluginSettingTab extends PluginSettingTab {
 
         // Handle value changes
         dropdown.onChange(async (key) => {
-			const model = this.plugin.settings.models[key];
+			const model = key;
 			console.log("Corresponding value:", model);
             // You can also update your plugin's settings here
             this.plugin.settings.model = model;
             await this.plugin.saveSettings();
         });
+
+		new Setting(containerEl) // 创建一个新的 Setting 对象，并添加到设置选项卡容器中
+            .setName('Enable auto select first') // 设置设置项的名称，显示在用户界面上
+            .setDesc('This toggle enables or disables auto select first title in response.') // 设置设置项的描述，提供更详细的说明
+            .addToggle(toggle => toggle // 使用 addToggle() 方法添加一个开关
+                .setValue(this.plugin.settings.autoFirst) // 设置开关的初始值，从插件设置中读取
+                .onChange(async (value) => { // 注册开关状态改变时的回调函数
+                    console.log('Feature X Toggle: ' + value); // 在控制台输出开关状态 (调试用)
+                    this.plugin.settings.autoFirst = value; // 更新插件设置对象中的开关状态
+                    await this.plugin.saveSettings(); // 保存更新后的插件设置到磁盘
+                })
+            );
 
 	}
 }
@@ -220,7 +236,8 @@ export class MyModalSuggestion extends SuggestModal<string> {
 	}
 
 	onChooseSuggestion(item: string, evt: MouseEvent | KeyboardEvent): void {
-		this.resolvePromise(item);
+		this.inputEl.value = item;
+		this.resolvePromise(this.inputEl.value); 
 		this.close();
 	}
 
@@ -249,15 +266,22 @@ export default class MyPlugin extends Plugin {
 			name: 'Change note name here',
 			editorCallback: async (editor: Editor, view: MarkdownView) => {
 				const titles = await this.getTitles(view);
-				const modal = new MyModalSuggestion(titles, this.app, editor);
-				const selectedTitle = await modal.openAndGetValue();
-				if (selectedTitle) { // 确保用户选择了标题，而不是取消了 Modal
-					new Notice(`用户选择了标题: ${selectedTitle}`);
+				if (this.settings.autoFirst) {
+					// 如果启用自动选择第一个标题，则直接使用第一个标题
+					const firstTitle = titles[0];
+					new Notice(`自动选择了标题: ${firstTitle}`);
 					// 在这里调用你的修改标题和添加别名的函数
-					await this.modifyTitle(view, selectedTitle);
-					new Notice(`笔记标题已设置为: ${selectedTitle}`);
+					await this.modifyTitle(view, firstTitle);
 				} else {
-					new Notice("用户取消了标题选择。");
+					const modal = new MyModalSuggestion(titles, this.app, editor);
+					const selectedTitle = await modal.openAndGetValue();
+					if (selectedTitle) { // 确保用户选择了标题，而不是取消了 Modal
+						new Notice(`用户选择了标题: ${selectedTitle}`);
+						// 在这里调用你的修改标题和添加别名的函数
+						await this.modifyTitle(view, selectedTitle);
+					} else {
+						new Notice("用户取消了标题选择。");
+					}
 				}
 			}
 		});
@@ -267,15 +291,22 @@ export default class MyPlugin extends Plugin {
 			name: 'Add a alias here',
 			editorCallback: async (editor: Editor, view: MarkdownView) => {
 				const titles = await this.getTitles(view);
-				const modal = new MyModalSuggestion(titles, this.app, editor);
-				const selectedTitle = await modal.openAndGetValue();
-				if (selectedTitle) { // 确保用户选择了标题，而不是取消了 Modal
-					new Notice(`用户选择了别名: ${selectedTitle}`);
+				if (this.settings.autoFirst) {
+					// 如果启用自动选择第一个标题，则直接使用第一个标题
+					const firstTitle = titles[0];
+					new Notice(`自动选择了别名: ${firstTitle}`);
 					// 在这里调用你的修改标题和添加别名的函数
-					await this.addAlias(view, selectedTitle);
-					new Notice(`笔记别名已添加了: ${selectedTitle}`);
+					await this.addAlias(view, firstTitle);
 				} else {
-					new Notice("用户取消了别名选择。");
+					const modal = new MyModalSuggestion(titles, this.app, editor);
+					const selectedTitle = await modal.openAndGetValue();
+					if (selectedTitle) { // 确保用户选择了标题，而不是取消了 Modal
+						new Notice(`用户选择了别名: ${selectedTitle}`);
+						// 在这里调用你的修改标题和添加别名的函数
+						await this.addAlias(view, selectedTitle);
+					} else {
+						new Notice("用户取消了别名选择。");
+					}
 				}
 			}
 		})
@@ -323,7 +354,7 @@ export default class MyPlugin extends Plugin {
 			}
 	
 			// 将修改后的 frontmatter 转换回 YAML 字符串
-			const newFrontmatterYaml = "---\n" + YAML.dump(frontmatter).trim() + "\n---\n";
+			const newFrontmatterYaml = "---\n" + YAML.dump(frontmatter).trim() + "\n---";
 			const newFileContent = newFrontmatterYaml + bodyContent;
 	
 			await this.app.vault.modify(file, newFileContent);

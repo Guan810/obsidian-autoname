@@ -3,7 +3,7 @@
 	"name": "Auto Name",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "Auto name note using OpanAi Api.",
+	"description": "Auto name note using OpanAi Compatible Api.",
 	"author": "Obsidian",
 	"authorUrl": "https://obsidian.md",
 	"fundingUrl": "https://obsidian.md/pricing",
