@@ -1,7 +1,6 @@
-import { get } from 'http';
-import { App, DropdownComponent, Notice, Plugin, PluginSettingTab, Setting, ButtonComponent, Editor, MarkdownView, TFile } from 'obsidian';
+import { App, DropdownComponent, Notice, Plugin, PluginSettingTab, Setting, ButtonComponent, Editor, MarkdownView, SuggestModal } from 'obsidian';
 import OpenAI from 'openai';
-
+import * as YAML from 'js-yaml';
 
 interface MyPluginSettings {
 	api_key: string;
@@ -174,6 +173,8 @@ export class MyPluginSettingTab extends PluginSettingTab {
         // Add options to the dropdown
         dropdown.addOptions(this.plugin.settings.models);
 
+		dropdown.setValue(this.plugin.settings.model);
+
 		// 在下拉栏右侧添加一个按钮
         const button = new ButtonComponent(controlContainer)
             .setButtonText("Refresh")
@@ -187,7 +188,6 @@ export class MyPluginSettingTab extends PluginSettingTab {
 
         // Handle value changes
         dropdown.onChange(async (key) => {
-			console.log("Selected key:", key);
 			const model = this.plugin.settings.models[key];
 			console.log("Corresponding value:", model);
             // You can also update your plugin's settings here
@@ -196,6 +196,41 @@ export class MyPluginSettingTab extends PluginSettingTab {
         });
 
 	}
+}
+
+export class MyModalSuggestion extends SuggestModal<string> {
+	titles: string[];
+	editor: Editor;
+	resolvePromise: (value: string) => void;
+	
+	constructor(titles: string[], app: App, editor: Editor) {
+		super(app);
+		this.titles = titles;
+		this.editor = editor;
+	}
+
+	getSuggestions(inputStr: string): string[] {
+		return this.titles.filter((title) => {
+			return title.toLowerCase().includes(inputStr.toLowerCase());
+		});
+	}
+
+	renderSuggestion(value: string, el: HTMLElement): void {
+		el.setText(value);
+	}
+
+	onChooseSuggestion(item: string, evt: MouseEvent | KeyboardEvent): void {
+		this.resolvePromise(item);
+		this.close();
+	}
+
+	// 添加一个 open 方法，返回 Promise
+    openAndGetValue(): Promise<string> {
+        return new Promise((resolve) => {
+            this.resolvePromise = resolve; // 将 resolve 函数赋值给类的成员变量
+            this.open(); // 打开 Modal
+        });
+    }
 }
 
 export default class MyPlugin extends Plugin {
@@ -210,19 +245,38 @@ export default class MyPlugin extends Plugin {
 		this.client = new OpenAIClient(this.settings.api_key, this.settings.base_url);
 
 		this.addCommand({
-			id: 'add_alias_here',
-			name: 'Add a alias here',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				this.getTitles(view);
-				
+			id: 'change_name_here',
+			name: 'Change note name here',
+			editorCallback: async (editor: Editor, view: MarkdownView) => {
+				const titles = await this.getTitles(view);
+				const modal = new MyModalSuggestion(titles, this.app, editor);
+				const selectedTitle = await modal.openAndGetValue();
+				if (selectedTitle) { // 确保用户选择了标题，而不是取消了 Modal
+					new Notice(`用户选择了标题: ${selectedTitle}`);
+					// 在这里调用你的修改标题和添加别名的函数
+					await this.modifyTitle(view, selectedTitle);
+					new Notice(`笔记标题已设置为: ${selectedTitle}`);
+				} else {
+					new Notice("用户取消了标题选择。");
+				}
 			}
 		});
 
 		this.addCommand({
-			id: 'change_name_here',
-			name: 'Change note name here',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				console.log(editor.getDoc())
+			id: 'add_alias_here',
+			name: 'Add a alias here',
+			editorCallback: async (editor: Editor, view: MarkdownView) => {
+				const titles = await this.getTitles(view);
+				const modal = new MyModalSuggestion(titles, this.app, editor);
+				const selectedTitle = await modal.openAndGetValue();
+				if (selectedTitle) { // 确保用户选择了标题，而不是取消了 Modal
+					new Notice(`用户选择了别名: ${selectedTitle}`);
+					// 在这里调用你的修改标题和添加别名的函数
+					await this.addAlias(view, selectedTitle);
+					new Notice(`笔记别名已添加了: ${selectedTitle}`);
+				} else {
+					new Notice("用户取消了别名选择。");
+				}
 			}
 		})
 	}
@@ -231,29 +285,93 @@ export default class MyPlugin extends Plugin {
 
 	}
 
+	async addAlias(markdownView: MarkdownView, aliasToAdd: string) {
+		if (!markdownView.file) {
+			new Notice("当前没有打开笔记。");
+			return;
+		}
+	
+		const file = markdownView.file;
+	
+		try {
+			let fileContent = await this.app.vault.read(file);
+			let frontmatter: { aliases?: string[] } = {};
+			let bodyContent = fileContent;
+	
+			// 尝试解析 frontmatter
+			const frontmatterRegex = /^---\n([\s\S]*?)\n---/;
+			const match = fileContent.match(frontmatterRegex);
+			if (match) {
+				try {
+					frontmatter = YAML.load(match[1]) as object || {}; // 解析 YAML，如果解析失败或为空，则默认为空对象
+					bodyContent = fileContent.substring(match[0].length); // 提取正文内容
+				} catch (yamlError) {
+					console.error("解析 YAML Frontmatter 失败:", yamlError);
+					new Notice("解析 YAML Frontmatter 失败。可能无法添加别名。");
+					return; // 解析失败，直接返回，不继续添加别名
+				}
+			}
+	
+			// 确保 aliases 字段存在且为数组
+			if (!frontmatter.hasOwnProperty('aliases') || !Array.isArray(frontmatter['aliases'])) {
+				frontmatter['aliases'] = [];
+			}
+	
+			// 添加新的别名 (如果不存在于 aliases 数组中)
+			if (!frontmatter['aliases'].includes(aliasToAdd)) {
+				frontmatter['aliases'].push(aliasToAdd);
+			}
+	
+			// 将修改后的 frontmatter 转换回 YAML 字符串
+			const newFrontmatterYaml = "---\n" + YAML.dump(frontmatter).trim() + "\n---\n";
+			const newFileContent = newFrontmatterYaml + bodyContent;
+	
+			await this.app.vault.modify(file, newFileContent);
+			new Notice(`已添加别名: ${aliasToAdd}`);
+	
+		} catch (error) {
+			console.error("添加别名失败:", error);
+			new Notice("添加别名失败。");
+		}
+	}
+
+	async modifyTitle(markdownView: MarkdownView, newTitle: string) {
+		if (!markdownView.file) {
+			new Notice("当前没有打开笔记。");
+			return;
+		}
+	
+		const file = markdownView.file;
+		console.log(file);
+		const basePath = file.parent ? file.parent.path + "/" : ""; // 获取父文件夹路径，根目录则为空
+		const newFilePath = basePath + newTitle + ".md"; // 构建新的文件路径
+	
+		try {
+			await this.app.vault.rename(file, newFilePath);
+			new Notice(`笔记标题已修改为: ${newTitle}`);
+		} catch (error) {
+			console.error("重命名文件失败:", error);
+			new Notice("修改笔记标题失败。");
+		}
+	}
+
 	async getTitles(view: MarkdownView) {
 		// 获取当前文件的全文（Markdown内容）
 		const fileContent = view.getViewData();
-		console.log("File content:", fileContent);
 
 		const p = this.client.getPrompt(fileContent);
-		console.log("Prompt:", p);
 
 		// 使用 OpenAI API 生成标题
-		await this.client.createCompletion(this.settings.model, p)
-		.then((response) => {
-			if (response == null) {
-				console.error("Response is undefined.");
-			} else {
-				console.log("Response:", response);
-				const titles = response.split('\n');
-				console.log("Titles:", titles);
-			}
-		})
-		.catch((error) => {
-			console.error("Error:", error);
-		});
-
+		const response = await this.client.createCompletion(this.settings.model, p)
+		
+		if (response == null) {
+			console.log("undefined response");
+			return [];
+		} else {
+			const titles = response.split('\n');
+			console.log("Titles:", titles);
+			return titles;
+		}
 	}
 
 	async reloadModels() {
@@ -265,7 +383,7 @@ export default class MyPlugin extends Plugin {
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
 		if (this.settings.model == '') {
-			new Notice('Please set a model in the settings.');
+			new Notice('请在设置中设置模型！');
 		}
 	}
 
