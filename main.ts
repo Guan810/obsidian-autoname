@@ -2,7 +2,7 @@ import { App, DropdownComponent, Notice, Plugin, PluginSettingTab, Setting, Butt
 import OpenAI from 'openai';
 import * as YAML from 'js-yaml';
 
-interface MyPluginSettings {
+interface AutoNameSettings {
 	api_key: string;
 	base_url: string;
 	model: string;
@@ -10,7 +10,7 @@ interface MyPluginSettings {
 	autoFirst: boolean;
 }
 
-const DEFAULT_SETTINGS: MyPluginSettings = {
+const DEFAULT_SETTINGS: AutoNameSettings = {
 	api_key: 'API KEY',
 	base_url: 'https://api.openai.com/v1/',
 	model: '',
@@ -73,34 +73,32 @@ ${content}
 
 2. 分析文本核心内容，识别以下要素：
 
-   - 主要论述对象或主题
-   - 关键概念/专业术语
-   - 文本结构特征（如列表、引文、代码块等）
-   - 作者的核心观点或结论
-   - 当前文本的标题与别名（如果有）
+	- 主要论述对象或主题
+	- 关键概念/专业术语
+	- 文本结构特征（如列表、引文、代码块等）
+	- 作者的核心观点或结论
+	- 当前文本的标题与别名（如果有）
 
 
 3. 生成标题时必须遵守：
 
-   - 每个标题不超过20个token（单词/字词单位）
-   - 准确概括文本的核心信息
-   - 优先使用文本中出现的关键词
-   - 避免主观解释或补充信息
-   - 允许创造性重组核心要素
-   - 不允许与现有标题与别名重复
+	- 每个标题不超过20个token（单词/字词单位）
+	- 准确概括文本的核心信息
+	- 优先使用文本中出现的关键词
+	- 避免主观解释或补充信息
+	- 允许创造性重组核心要素
+	- 不允许与现有标题与别名重复
 
 
 4. 输出要求：
 
-   - 生成3-5个候选标题
-   - 每个标题单独成行
-   - 不使用编号或项目符号
-   - 完全排除Markdown格式
-   - 禁止添加说明性文字
+	- 生成3-5个候选标题
+	- 每个标题单独成行
+	- 不使用编号或项目符号
+	- 完全排除Markdown格式
+	- 禁止添加说明性文字
 
 </任务要求>
-
-
 
 请直接输出候选标题，格式示例如下：
 
@@ -121,10 +119,10 @@ Ensemble Model Optimization Strategies
 	}
 }
 
-export class MyPluginSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
+export class AutoNameSettingTab extends PluginSettingTab {
+	plugin: AutoNamePlugin;
 
-	constructor(app: App, plugin: MyPlugin) {
+	constructor(app: App, plugin: AutoNamePlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
@@ -210,7 +208,7 @@ export class MyPluginSettingTab extends PluginSettingTab {
 	}
 }
 
-export class MyModalSuggestion extends SuggestModal<string> {
+export class AutoNameModal extends SuggestModal<string> {
 	titles: string[];
 	editor: Editor;
 	resolvePromise: (value: string) => void;
@@ -246,14 +244,14 @@ export class MyModalSuggestion extends SuggestModal<string> {
     }
 }
 
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+export default class AutoNamePlugin extends Plugin {
+	settings: AutoNameSettings;
 	client: OpenAIClient;
 
 	async onload() {
 		await this.loadSettings();
 
-		this.addSettingTab(new MyPluginSettingTab(this.app, this));
+		this.addSettingTab(new AutoNameSettingTab(this.app, this));
 
 		this.client = new OpenAIClient(this.settings.api_key, this.settings.base_url);
 
@@ -269,7 +267,7 @@ export default class MyPlugin extends Plugin {
 					// 在这里调用你的修改标题和添加别名的函数
 					await this.modifyTitle(view, firstTitle);
 				} else {
-					const modal = new MyModalSuggestion(titles, this.app, editor);
+					const modal = new AutoNameModal(titles, this.app, editor);
 					const selectedTitle = await modal.openAndGetValue();
 					if (selectedTitle) { // 确保用户选择了标题，而不是取消了 Modal
 						new Notice(`用户选择了标题: ${selectedTitle}`);
@@ -294,7 +292,7 @@ export default class MyPlugin extends Plugin {
 					// 在这里调用你的修改标题和添加别名的函数
 					await this.addAlias(view, firstTitle);
 				} else {
-					const modal = new MyModalSuggestion(titles, this.app, editor);
+					const modal = new AutoNameModal(titles, this.app, editor);
 					const selectedTitle = await modal.openAndGetValue();
 					if (selectedTitle) { // 确保用户选择了标题，而不是取消了 Modal
 						new Notice(`用户选择了别名: ${selectedTitle}`);
