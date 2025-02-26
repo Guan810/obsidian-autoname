@@ -1,15 +1,15 @@
 {
-	"name": "obsidian-sample-plugin",
+	"name": "obsidian-autoname",
 	"version": "1.0.0",
-	"description": "This is a sample plugin for Obsidian (https://obsidian.md)",
+	"description": "This is a plugin for Obsidian (https://obsidian.md) that automatically suggests and applies names to your notes using an OpenAI-compatible API.",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
 		"version": "node version-bump.mjs && git add manifest.json versions.json"
 	},
-	"keywords": [],
-	"author": "",
+	"keywords": ["Autoname", "Openai api", "Obsidian"],
+	"author": "Guan810",
 	"license": "MIT",
 	"devDependencies": {
 		"@types/js-yaml": "^4.0.9",
