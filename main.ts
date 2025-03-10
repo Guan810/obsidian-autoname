@@ -6,15 +6,24 @@ interface AutoNameSettings {
 	api_key: string;
 	base_url: string;
 	model: string;
-	models: Record<string, string>;
+	models: string[];
 	autoFirst: boolean;
 }
+	
+function getModelDictionary(models: string[]): { [key: string]: string } {
+	const modelDict: { [key: string]: string } = {};
+	models?.forEach(model => {
+		modelDict[model] = model;
+	});
+	return modelDict;
+}
+
 
 const DEFAULT_SETTINGS: AutoNameSettings = {
 	api_key: 'API KEY',
 	base_url: 'https://api.openai.com/v1/',
 	model: '',
-	models: {},
+	models: [],
 	autoFirst: false,
 }
 
@@ -30,17 +39,14 @@ export class OpenAIClient {
 		});
 	}
 
-	async listModels() {
-		const res: Record<string, string> = {}
+	async listModels() : Promise<string[]>{
 		try {
 			const models = await this.client.models.list();
-			models.data.forEach((model) => {
-				res[`${model.id}`] = model.id;
-			  });
+			return models.data.map(model => model.id);
 		} catch (error) {
 		  	console.error('Error:', error);
+			return []
 		}
-		return res
 	}
 
 	async createCompletion(model: string, prompt: string) {
@@ -142,7 +148,7 @@ export class AutoNameSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.api_key)
 				.onChange(async (value) => {
 					this.plugin.settings.api_key = value;
-					await this.plugin.saveSettings();
+					await this.plugin.saveData(this.plugin.settings);
 				}));
 
 		new Setting(containerEl)
@@ -153,7 +159,7 @@ export class AutoNameSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.base_url)
 				.onChange(async (value) => {
 					this.plugin.settings.base_url = value;
-					await this.plugin.saveSettings();
+					await this.plugin.saveData(this.plugin.settings);
 				}));
 
 		// Create a container for the dropdown
@@ -171,7 +177,8 @@ export class AutoNameSettingTab extends PluginSettingTab {
         const dropdown = new DropdownComponent(controlContainer);
 
         // Add options to the dropdown
-        dropdown.addOptions(this.plugin.settings.models);
+		const options = getModelDictionary(this.plugin.settings.models);
+		dropdown.addOptions(options);
 
 		dropdown.setValue(this.plugin.settings.model);
 
@@ -181,6 +188,9 @@ export class AutoNameSettingTab extends PluginSettingTab {
             .setCta()
             .onClick(() => {
                 this.plugin.reloadModels(); // 触发 reload 函数
+				dropdown.selectEl.innerHTML = ""; // 清空现有选项
+				dropdown.addOptions(getModelDictionary(this.plugin.settings.models)); // 添加新的选项
+				dropdown.setValue(this.plugin.settings.model);
             });
 
         // 设置按钮的图标（刷新图标）
@@ -191,7 +201,7 @@ export class AutoNameSettingTab extends PluginSettingTab {
 			const model = key;
             // You can also update your plugin's settings here
             this.plugin.settings.model = model;
-            await this.plugin.saveSettings();
+            await this.plugin.saveData(this.plugin.settings);
         });
 
 		new Setting(containerEl) // 创建一个新的 Setting 对象，并添加到设置选项卡容器中
@@ -201,7 +211,7 @@ export class AutoNameSettingTab extends PluginSettingTab {
                 .setValue(this.plugin.settings.autoFirst) // 设置开关的初始值，从插件设置中读取
                 .onChange(async (value) => { // 注册开关状态改变时的回调函数
                     this.plugin.settings.autoFirst = value; // 更新插件设置对象中的开关状态
-                    await this.plugin.saveSettings(); // 保存更新后的插件设置到磁盘
+                    await this.plugin.saveData(this.plugin.settings); // 保存更新后的插件设置到磁盘
                 })
             );
 
@@ -399,7 +409,7 @@ export default class AutoNamePlugin extends Plugin {
 
 	async reloadModels() {
 		this.settings.models = await this.client.listModels();
-		await this.saveSettings();
+		await this.saveData(this.settings);
 		new Notice("模型列表已刷新！");
 	}
 
@@ -410,9 +420,4 @@ export default class AutoNamePlugin extends Plugin {
 		}
 	}
 
-	async saveSettings() {
-		this.client = new OpenAIClient(this.settings.api_key, this.settings.base_url);
-		this.settings.models = await this.client.listModels();
-		await this.saveData(this.settings);
-	}
 }
